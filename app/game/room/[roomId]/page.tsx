@@ -32,13 +32,15 @@ export default function RoomGame() {
   const [answerInput, setAnswerInput] = useState('');
   const [results,     setResults]     = useState<{name:string;correct:boolean;answer:string}[]>([]);
   const [loading,     setLoading]     = useState(false);
-  const [winner,      setWinner]      = useState<string | null>(null);
+  const [winner,        setWinner]        = useState<string | null>(null);
+  const [buzzCountdown, setBuzzCountdown] = useState<number | null>(null);
 
   const playerId    = useRef('');
   const channelRef  = useRef<Channel | null>(null);
   const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedRef  = useRef<number | null>(null);
   const usedRef     = useRef<string[]>([]);
+  const buzzTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startTimer = useCallback((startedAt: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -61,6 +63,28 @@ export default function RoomGame() {
     });
   }
 
+  function clearBuzzTimer() {
+    if (buzzTimerRef.current) clearInterval(buzzTimerRef.current);
+    buzzTimerRef.current = null;
+    setBuzzCountdown(null);
+  }
+
+  function startBuzzTimer() {
+    clearBuzzTimer();
+    let count = 3;
+    setBuzzCountdown(count);
+    buzzTimerRef.current = setInterval(() => {
+      count--;
+      if (count <= 0) {
+        clearBuzzTimer();
+        setMyState('wrong');
+        gameAction({ action: 'answer', answer: '' });
+      } else {
+        setBuzzCountdown(count);
+      }
+    }, 1000);
+  }
+
   function joinRoom() {
     if (!playerName.trim()) return;
     playerId.current = getPlayerId();
@@ -78,6 +102,7 @@ export default function RoomGame() {
     });
 
     ch.bind('new-problem', ({ question, startedAt, players, scores }: { question: string; startedAt: number; players: Players; scores: Scores }) => {
+      clearBuzzTimer();
       setQuestion(question);
       setRevealAnswer(null);
       setResults([]);
@@ -91,11 +116,12 @@ export default function RoomGame() {
 
     ch.bind('buzzed', ({ playerId: bid, playerName }: { playerId: string; playerName: string }) => {
       setBuzzedId(bid);
-      if (bid === playerId.current) setMyState('buzzed');
+      if (bid === playerId.current) { setMyState('buzzed'); startBuzzTimer(); }
     });
 
     ch.bind('answer-result', ({ playerId: pid, playerName, correct, answer, scores, revealAnswer, allWrong, winner }:
       { playerId: string; playerName: string; correct: boolean; answer: string; scores: Scores; revealAnswer: string | null; allWrong: boolean; winner: string | null }) => {
+      clearBuzzTimer();
       setScores(scores);
       setResults(r => [...r, { name: playerName, correct, answer }]);
       setBuzzedId(null);
@@ -240,22 +266,30 @@ export default function RoomGame() {
 
       {/* Buzzer */}
       <div className="w-full max-w-xs flex flex-col gap-3">
+        {buzzedId && buzzedId !== playerId.current && (
+          <div className="text-center text-yellow-400 text-sm font-bold animate-pulse">
+            {players[buzzedId]} is answering… {buzzCountdown !== null ? `${buzzCountdown}s` : ''}
+          </div>
+        )}
         <button
           onClick={() => gameAction({ action: 'buzz' })}
-          disabled={!question || myState !== 'idle' || !!revealAnswer}
+          disabled={!question || myState !== 'idle' || !!revealAnswer || !!buzzedId}
           className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-40 disabled:cursor-not-allowed text-black font-black text-3xl py-8 rounded-2xl transition active:scale-95 w-full"
         >
-          {buzzedId === playerId.current ? '🔔 BUZZED!' : 'BUZZ!'}
+          {myState === 'buzzed' ? '🔔 BUZZED!' : 'BUZZ!'}
         </button>
 
         {myState === 'buzzed' && (
-          <div className="flex gap-2">
-            <input type="text" value={answerInput} onChange={e => setAnswerInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && gameAction({ action: 'answer', answer: answerInput })}
-              placeholder="Your answer…"
-              className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 flex-1" autoFocus />
-            <button onClick={() => gameAction({ action: 'answer', answer: answerInput })}
-              className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-3 rounded-lg">✓</button>
+          <div className="flex flex-col gap-2">
+            <div className="text-center text-yellow-400 font-black text-2xl">{buzzCountdown}s</div>
+            <div className="flex gap-2">
+              <input type="text" value={answerInput} onChange={e => setAnswerInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { clearBuzzTimer(); gameAction({ action: 'answer', answer: answerInput }); }}}
+                placeholder="Your answer…"
+                className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 flex-1" autoFocus />
+              <button onClick={() => { clearBuzzTimer(); gameAction({ action: 'answer', answer: answerInput }); }}
+                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-3 rounded-lg">✓</button>
+            </div>
           </div>
         )}
         {myState === 'correct' && <div className="text-green-400 text-center font-bold text-lg">✓ Correct!</div>}

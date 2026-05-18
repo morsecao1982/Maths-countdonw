@@ -7,33 +7,79 @@ interface Problem { question: string; answer: string; }
 type PlayerState = 'idle' | 'buzzed' | 'correct' | 'wrong';
 
 export default function LocalGame() {
-  const [problem,    setProblem]    = useState<Problem | null>(null);
-  const [loading,    setLoading]    = useState(false);
-  const [timeLeft,   setTimeLeft]   = useState(45);
-  const [running,    setRunning]    = useState(false);
-  const [p1,         setP1]         = useState<PlayerState>('idle');
-  const [p2,         setP2]         = useState<PlayerState>('idle');
-  const [p1Answer,   setP1Answer]   = useState('');
-  const [p2Answer,   setP2Answer]   = useState('');
-  const [p1Score,    setP1Score]    = useState(0);
-  const [p2Score,    setP2Score]    = useState(0);
-  const [showAnswer, setShowAnswer] = useState(false);
-  const [winner,     setWinner]     = useState<string | null>(null);
-  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const usedRef   = useRef<string[]>([]);
+  const [problem,       setProblem]       = useState<Problem | null>(null);
+  const [loading,       setLoading]       = useState(false);
+  const [timeLeft,      setTimeLeft]      = useState(45);
+  const [running,       setRunning]       = useState(false);
+  const [p1,            setP1]            = useState<PlayerState>('idle');
+  const [p2,            setP2]            = useState<PlayerState>('idle');
+  const [p1Answer,      setP1Answer]      = useState('');
+  const [p2Answer,      setP2Answer]      = useState('');
+  const [p1Score,       setP1Score]       = useState(0);
+  const [p2Score,       setP2Score]       = useState(0);
+  const [showAnswer,    setShowAnswer]    = useState(false);
+  const [winner,        setWinner]        = useState<string | null>(null);
+  const [buzzCountdown, setBuzzCountdown] = useState<number | null>(null);
+  const [buzzedPlayer,  setBuzzedPlayer]  = useState<1 | 2 | null>(null);
+
+  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const buzzTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const usedRef      = useRef<string[]>([]);
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     setRunning(false);
   }, []);
 
+  function clearBuzzTimer() {
+    if (buzzTimerRef.current) clearInterval(buzzTimerRef.current);
+    buzzTimerRef.current = null;
+    setBuzzCountdown(null);
+    setBuzzedPlayer(null);
+  }
+
+  // Auto-wrong when buzz countdown expires
+  function autoWrong(player: 1 | 2) {
+    clearBuzzTimer();
+    if (player === 1) {
+      setP1('wrong');
+      setP2(cur => {
+        if (cur === 'wrong') { stopTimer(); setShowAnswer(true); }
+        return cur;
+      });
+    } else {
+      setP2('wrong');
+      setP1(cur => {
+        if (cur === 'wrong') { stopTimer(); setShowAnswer(true); }
+        return cur;
+      });
+    }
+  }
+
+  function startBuzz(player: 1 | 2) {
+    clearBuzzTimer();
+    setBuzzedPlayer(player);
+    if (player === 1) setP1('buzzed'); else setP2('buzzed');
+
+    let count = 3;
+    setBuzzCountdown(count);
+    buzzTimerRef.current = setInterval(() => {
+      count--;
+      if (count <= 0) {
+        autoWrong(player);
+      } else {
+        setBuzzCountdown(count);
+      }
+    }, 1000);
+  }
+
   const fetchProblem = useCallback(async () => {
+    clearBuzzTimer();
     setLoading(true);
     setShowAnswer(false);
     setP1('idle'); setP2('idle');
     setP1Answer(''); setP2Answer('');
-    stopTimer();
-    setTimeLeft(45);
+    stopTimer(); setTimeLeft(45);
     try {
       const params = usedRef.current.length
         ? `?used=${encodeURIComponent(usedRef.current.join(','))}`
@@ -59,52 +105,47 @@ export default function LocalGame() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [running, stopTimer]);
 
-  function checkBothWrong(s1: PlayerState, s2: PlayerState) {
-    if (s1 === 'wrong' && s2 === 'wrong') { stopTimer(); setShowAnswer(true); }
-  }
-
   function submitAnswer(player: 1 | 2) {
+    clearBuzzTimer();
     const answer = player === 1 ? p1Answer : p2Answer;
     const correct = answer.trim().toLowerCase() === problem?.answer?.trim().toLowerCase();
     if (player === 1) {
       const next: PlayerState = correct ? 'correct' : 'wrong';
       setP1(next);
       if (correct) {
-        const newScore = p1Score + 1;
-        setP1Score(newScore);
-        stopTimer(); setShowAnswer(true);
-        if (newScore >= WIN_SCORE) setWinner('Player 1');
-      } else checkBothWrong(next, p2);
+        const s = p1Score + 1; setP1Score(s); stopTimer(); setShowAnswer(true);
+        if (s >= WIN_SCORE) setWinner('Player 1');
+      } else {
+        setP2(cur => { if (cur === 'wrong') { stopTimer(); setShowAnswer(true); } return cur; });
+      }
     } else {
       const next: PlayerState = correct ? 'correct' : 'wrong';
       setP2(next);
       if (correct) {
-        const newScore = p2Score + 1;
-        setP2Score(newScore);
-        stopTimer(); setShowAnswer(true);
-        if (newScore >= WIN_SCORE) setWinner('Player 2');
-      } else checkBothWrong(p1, next);
+        const s = p2Score + 1; setP2Score(s); stopTimer(); setShowAnswer(true);
+        if (s >= WIN_SCORE) setWinner('Player 2');
+      } else {
+        setP1(cur => { if (cur === 'wrong') { stopTimer(); setShowAnswer(true); } return cur; });
+      }
     }
   }
 
   function resetGame() {
-    setP1Score(0); setP2Score(0);
-    setWinner(null); setProblem(null);
-    setShowAnswer(false); setTimeLeft(45);
-    setP1('idle'); setP2('idle');
+    clearBuzzTimer(); stopTimer();
+    setP1Score(0); setP2Score(0); setWinner(null); setProblem(null);
+    setShowAnswer(false); setTimeLeft(45); setP1('idle'); setP2('idle');
     usedRef.current = [];
   }
 
   const stateColor = (s: PlayerState) =>
     s === 'correct' ? 'border-green-400 bg-green-900/30' :
-    s === 'wrong'   ? 'border-red-400   bg-red-900/30'   :
+    s === 'wrong'   ? 'border-red-400 bg-red-900/30'     :
     s === 'buzzed'  ? 'border-yellow-400 bg-yellow-900/30' :
     'border-gray-600 bg-gray-800';
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center p-6 gap-6">
 
-      {/* Winner overlay */}
       {winner && (
         <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 gap-6">
           <div className="text-8xl">🏆</div>
@@ -123,7 +164,6 @@ export default function LocalGame() {
         <div className="w-16" />
       </div>
 
-      {/* Scores */}
       <div className="flex gap-8 text-center">
         <div>
           <div className="text-3xl font-black text-blue-400">{p1Score}</div>
@@ -166,19 +206,23 @@ export default function LocalGame() {
         {/* Player 1 */}
         <div className={`border-2 rounded-2xl p-4 flex flex-col gap-3 transition ${stateColor(p1)}`}>
           <div className="text-blue-400 font-bold text-center">Player 1</div>
-          <button onClick={() => problem && p1 === 'idle' && running && setP1('buzzed')}
-            disabled={!problem || p1 !== 'idle' || !running}
+          <button
+            onClick={() => problem && p1 === 'idle' && running && !buzzedPlayer && startBuzz(1)}
+            disabled={!problem || p1 !== 'idle' || !running || buzzedPlayer !== null}
             className="bg-blue-500 hover:bg-blue-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-2xl py-6 rounded-xl transition active:scale-95">
             BUZZ!
           </button>
           {p1 === 'buzzed' && (
-            <div className="flex gap-2">
-              <input type="text" value={p1Answer} onChange={e => setP1Answer(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && submitAnswer(1)}
-                placeholder="Answer…" autoFocus
-                className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm flex-1" />
-              <button onClick={() => submitAnswer(1)}
-                className="bg-blue-500 hover:bg-blue-400 px-3 py-2 rounded-lg text-sm font-bold">✓</button>
+            <div className="flex flex-col gap-2">
+              <div className="text-center text-yellow-400 font-black text-2xl">{buzzCountdown}s</div>
+              <div className="flex gap-2">
+                <input type="text" value={p1Answer} onChange={e => setP1Answer(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && submitAnswer(1)}
+                  placeholder="Answer…" autoFocus
+                  className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm flex-1" />
+                <button onClick={() => submitAnswer(1)}
+                  className="bg-blue-500 hover:bg-blue-400 px-3 py-2 rounded-lg text-sm font-bold">✓</button>
+              </div>
             </div>
           )}
           {p1 === 'correct' && <div className="text-green-400 text-center font-bold">✓ Correct!</div>}
@@ -188,19 +232,23 @@ export default function LocalGame() {
         {/* Player 2 */}
         <div className={`border-2 rounded-2xl p-4 flex flex-col gap-3 transition ${stateColor(p2)}`}>
           <div className="text-pink-400 font-bold text-center">Player 2</div>
-          <button onClick={() => problem && p2 === 'idle' && running && setP2('buzzed')}
-            disabled={!problem || p2 !== 'idle' || !running}
+          <button
+            onClick={() => problem && p2 === 'idle' && running && !buzzedPlayer && startBuzz(2)}
+            disabled={!problem || p2 !== 'idle' || !running || buzzedPlayer !== null}
             className="bg-pink-500 hover:bg-pink-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-2xl py-6 rounded-xl transition active:scale-95">
             BUZZ!
           </button>
           {p2 === 'buzzed' && (
-            <div className="flex gap-2">
-              <input type="text" value={p2Answer} onChange={e => setP2Answer(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && submitAnswer(2)}
-                placeholder="Answer…" autoFocus
-                className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm flex-1" />
-              <button onClick={() => submitAnswer(2)}
-                className="bg-pink-500 hover:bg-pink-400 px-3 py-2 rounded-lg text-sm font-bold">✓</button>
+            <div className="flex flex-col gap-2">
+              <div className="text-center text-yellow-400 font-black text-2xl">{buzzCountdown}s</div>
+              <div className="flex gap-2">
+                <input type="text" value={p2Answer} onChange={e => setP2Answer(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && submitAnswer(2)}
+                  placeholder="Answer…" autoFocus
+                  className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm flex-1" />
+                <button onClick={() => submitAnswer(2)}
+                  className="bg-pink-500 hover:bg-pink-400 px-3 py-2 rounded-lg text-sm font-bold">✓</button>
+              </div>
             </div>
           )}
           {p2 === 'correct' && <div className="text-green-400 text-center font-bold">✓ Correct!</div>}
