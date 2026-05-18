@@ -32,11 +32,13 @@ export default function RoomGame() {
   const [answerInput, setAnswerInput] = useState('');
   const [results,     setResults]     = useState<{name:string;correct:boolean;answer:string}[]>([]);
   const [loading,     setLoading]     = useState(false);
+  const [winner,      setWinner]      = useState<string | null>(null);
 
-  const playerId   = useRef('');
-  const channelRef = useRef<Channel | null>(null);
-  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startedRef = useRef<number | null>(null);
+  const playerId    = useRef('');
+  const channelRef  = useRef<Channel | null>(null);
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startedRef  = useRef<number | null>(null);
+  const usedRef     = useRef<string[]>([]);
 
   const startTimer = useCallback((startedAt: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -92,14 +94,23 @@ export default function RoomGame() {
       if (bid === playerId.current) setMyState('buzzed');
     });
 
-    ch.bind('answer-result', ({ playerId: pid, playerName, correct, answer, scores, revealAnswer, allWrong }:
-      { playerId: string; playerName: string; correct: boolean; answer: string; scores: Scores; revealAnswer: string | null; allWrong: boolean }) => {
+    ch.bind('answer-result', ({ playerId: pid, playerName, correct, answer, scores, revealAnswer, allWrong, winner }:
+      { playerId: string; playerName: string; correct: boolean; answer: string; scores: Scores; revealAnswer: string | null; allWrong: boolean; winner: string | null }) => {
       setScores(scores);
       setResults(r => [...r, { name: playerName, correct, answer }]);
       setBuzzedId(null);
       if (pid === playerId.current) setMyState(correct ? 'correct' : 'wrong');
       if (revealAnswer) { setRevealAnswer(revealAnswer); clearInterval(timerRef.current!); }
       if (allWrong) setRevealAnswer(revealAnswer);
+      if (winner) setWinner(winner);
+    });
+
+    ch.bind('game-reset', ({ scores, players }: { scores: Scores; players: Players }) => {
+      setScores(scores); setPlayers(players);
+      setWinner(null); setQuestion(null);
+      setRevealAnswer(null); setResults([]);
+      setMyState('idle'); setBuzzedId(null);
+      setTimeLeft(45); usedRef.current = [];
     });
 
     ch.bind('pusher:subscription_succeeded', async () => {
@@ -111,6 +122,7 @@ export default function RoomGame() {
       const data = await res.json();
       setPlayers(data.players);
       setScores(data.scores);
+      usedRef.current = data.usedQuestions ?? [];
       if (data.question) {
         setQuestion(data.question);
         if (data.startedAt) startTimer(data.startedAt);
@@ -122,8 +134,12 @@ export default function RoomGame() {
   async function fetchAndSetProblem() {
     setLoading(true);
     try {
-      const res = await fetch('/api/problem');
+      const params = usedRef.current.length
+        ? `?used=${encodeURIComponent(usedRef.current.join(','))}`
+        : '';
+      const res = await fetch(`/api/problem${params}`);
       const problem = await res.json();
+      usedRef.current = [...usedRef.current, problem.question].slice(-40);
       await gameAction({ action: 'set-problem', problem });
     } finally {
       setLoading(false);
@@ -158,6 +174,23 @@ export default function RoomGame() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center p-6 gap-6">
+
+      {/* Winner overlay */}
+      {winner && (
+        <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 gap-6">
+          <div className="text-8xl">🏆</div>
+          <h2 className="text-5xl font-black text-yellow-400">{winner} Wins!</h2>
+          <p className="text-gray-400">First to 10 correct answers</p>
+          {isHost && (
+            <button onClick={() => gameAction({ action: 'reset' })}
+              className="bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 px-10 rounded-2xl text-xl mt-4">
+              Play Again
+            </button>
+          )}
+          {!isHost && <p className="text-gray-500 text-sm">Waiting for host to start a new game…</p>}
+        </div>
+      )}
+
       <div className="flex items-center justify-between w-full max-w-2xl">
         <a href="/" className="text-gray-500 hover:text-white text-sm">← Back</a>
         <h1 className="text-xl font-black text-yellow-400">Room: {roomId}</h1>
@@ -169,7 +202,10 @@ export default function RoomGame() {
         {Object.entries(players).map(([id, name]) => (
           <div key={id} className={`text-center px-4 py-2 rounded-xl ${id === playerId.current ? 'bg-yellow-900/30 border border-yellow-400' : 'bg-gray-800'}`}>
             <div className="text-2xl font-black">{scores[id] ?? 0}</div>
-            <div className="text-xs text-gray-400">{name}{id === playerId.current ? ' (you)' : ''}</div>
+            <div className="text-xs text-gray-400 mb-1">{name}{id === playerId.current ? ' (you)' : ''}</div>
+            <div className="h-1.5 w-20 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full bg-yellow-400 rounded-full transition-all" style={{ width: `${((scores[id] ?? 0) / 10) * 100}%` }} />
+            </div>
           </div>
         ))}
       </div>
