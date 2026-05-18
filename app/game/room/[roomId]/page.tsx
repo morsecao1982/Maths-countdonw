@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Pusher, { Channel } from 'pusher-js';
 import Timer from '@/components/Timer';
+import MathText from '@/components/MathText';
+import AnswerInput from '@/components/AnswerInput';
 
 interface Players { [id: string]: string }
 interface Scores  { [id: string]: number }
@@ -241,8 +243,8 @@ export default function RoomGame() {
       {/* Problem */}
       <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 w-full max-w-2xl min-h-32 flex flex-col items-center justify-center text-center gap-3">
         {question
-          ? <><p className="text-lg leading-relaxed">{question}</p>
-              {revealAnswer && <div className="text-green-400 font-bold text-xl">Answer: {revealAnswer}</div>}</>
+          ? <><p className="text-lg leading-relaxed"><MathText text={question} /></p>
+              {revealAnswer && <div className="text-green-400 font-bold text-xl">Answer: <MathText text={revealAnswer} /></div>}</>
           : <p className="text-gray-500">{isHost ? 'Press "Start" to load a problem' : 'Waiting for host…'}</p>
         }
       </div>
@@ -280,17 +282,12 @@ export default function RoomGame() {
         </button>
 
         {myState === 'buzzed' && (
-          <div className="flex flex-col gap-2">
-            <div className="text-center text-yellow-400 font-black text-2xl">{buzzCountdown}s</div>
-            <div className="flex gap-2">
-              <input type="text" value={answerInput} onChange={e => setAnswerInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { clearBuzzTimer(); gameAction({ action: 'answer', answer: answerInput }); }}}
-                placeholder="Your answer…"
-                className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 flex-1" autoFocus />
-              <button onClick={() => { clearBuzzTimer(); gameAction({ action: 'answer', answer: answerInput }); }}
-                className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-4 py-3 rounded-lg">✓</button>
-            </div>
-          </div>
+          <AnswerInput
+            value={answerInput}
+            onChange={setAnswerInput}
+            onSubmit={() => { clearBuzzTimer(); gameAction({ action: 'answer', answer: answerInput }); }}
+            countdown={buzzCountdown}
+          />
         )}
         {myState === 'correct' && <div className="text-green-400 text-center font-bold text-lg">✓ Correct!</div>}
         {myState === 'wrong'   && <div className="text-red-400   text-center font-bold text-lg">✗ Wrong</div>}

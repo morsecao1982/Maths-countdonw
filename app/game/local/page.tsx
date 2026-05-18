@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Timer from '@/components/Timer';
+import MathText from '@/components/MathText';
+import AnswerInput from '@/components/AnswerInput';
 
 const WIN_SCORE = 10;
 interface Problem { question: string; answer: string; }
@@ -189,8 +191,8 @@ export default function LocalGame() {
           <div className="text-gray-400 animate-pulse">Loading problem…</div>
         ) : problem ? (
           <>
-            <p className="text-lg leading-relaxed">{problem.question}</p>
-            {showAnswer && <div className="mt-2 text-green-400 font-bold text-xl">Answer: {problem.answer}</div>}
+            <p className="text-lg leading-relaxed"><MathText text={problem.question} /></p>
+            {showAnswer && <div className="mt-2 text-green-400 font-bold text-xl">Answer: <MathText text={problem.answer} /></div>}
           </>
         ) : (
           <p className="text-gray-500">Press "Start" to begin</p>
@@ -213,17 +215,12 @@ export default function LocalGame() {
             BUZZ!
           </button>
           {p1 === 'buzzed' && (
-            <div className="flex flex-col gap-2">
-              <div className="text-center text-yellow-400 font-black text-2xl">{buzzCountdown}s</div>
-              <div className="flex gap-2">
-                <input type="text" value={p1Answer} onChange={e => setP1Answer(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && submitAnswer(1)}
-                  placeholder="Answer…" autoFocus
-                  className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm flex-1" />
-                <button onClick={() => submitAnswer(1)}
-                  className="bg-blue-500 hover:bg-blue-400 px-3 py-2 rounded-lg text-sm font-bold">✓</button>
-              </div>
-            </div>
+            <AnswerInput
+              value={p1Answer} onChange={setP1Answer}
+              onSubmit={() => submitAnswer(1)}
+              btnClass="bg-blue-500 hover:bg-blue-400 text-white"
+              countdown={buzzCountdown}
+            />
           )}
           {p1 === 'correct' && <div className="text-green-400 text-center font-bold">✓ Correct!</div>}
           {p1 === 'wrong'   && <div className="text-red-400   text-center font-bold">✗ Wrong</div>}
@@ -239,17 +236,12 @@ export default function LocalGame() {
             BUZZ!
           </button>
           {p2 === 'buzzed' && (
-            <div className="flex flex-col gap-2">
-              <div className="text-center text-yellow-400 font-black text-2xl">{buzzCountdown}s</div>
-              <div className="flex gap-2">
-                <input type="text" value={p2Answer} onChange={e => setP2Answer(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && submitAnswer(2)}
-                  placeholder="Answer…" autoFocus
-                  className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm flex-1" />
-                <button onClick={() => submitAnswer(2)}
-                  className="bg-pink-500 hover:bg-pink-400 px-3 py-2 rounded-lg text-sm font-bold">✓</button>
-              </div>
-            </div>
+            <AnswerInput
+              value={p2Answer} onChange={setP2Answer}
+              onSubmit={() => submitAnswer(2)}
+              btnClass="bg-pink-500 hover:bg-pink-400 text-white"
+              countdown={buzzCountdown}
+            />
           )}
           {p2 === 'correct' && <div className="text-green-400 text-center font-bold">✓ Correct!</div>}
           {p2 === 'wrong'   && <div className="text-red-400   text-center font-bold">✗ Wrong</div>}
